@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor Cardíaco ESP32 - Dashboard MQTT</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .status-bar {
+            background: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #dc3545;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.connected {
+            background: #28a745;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-header {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .card-value {
+            font-size: 3em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .card-unit {
+            font-size: 1.2em;
+            color: #999;
+        }
+
+        .bpm-card .card-value {
+            color: #e74c3c;
+        }
+
+        .state-card .card-value {
+            font-size: 1.8em;
+        }
+
+        .state-normal {
+            color: #28a745 !important;
+        }
+
+        .state-tachy {
+            color: #dc3545 !important;
+        }
+
+        .state-brady {
+            color: #ffc107 !important;
+        }
+
+        .alert-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .alert-card .card-header,
+        .alert-card .card-unit {
+            color: rgba(255,255,255,0.9);
+        }
+
+        .messages {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            max-width: 1200px;
+            width: 100%;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .message {
+            padding: 10px;
+            border-left: 3px solid #667eea;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .message-time {
+            color: #999;
+            font-size: 0.8em;
+        }
+
+        .heartbeat {
+            animation: heartbeat 1s infinite;
+        }
+
+        @keyframes heartbeat {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .button:active {
+            transform: translateY(0);
+        }
+
+        .connection-info {
+            color: white;
+            font-size: 0.9em;
+            text-align: center;
+            margin-top: 20px;
+            opacity: 0.8;
+        }
+
+        .statistics {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            max-width: 1200px;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .stat-label {
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stat-value {
+            color: #333;
+        }
+
+        .error-message {
+            background: #fee;
+            border-left: 3px solid #d00;
+        }
+
+        .success-message {
+            background: #efe;
+            border-left: 3px solid #0d0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🫀 Monitor Cardíaco ESP32</h1>
+        <p>Dashboard em Tempo Real via MQTT (HiveMQ)</p>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-indicator" id="statusIndicator"></div>
+        <span id="statusText">Desconectado</span>
+        <button class="button" id="connectBtn" onclick="toggleConnection()">Conectar</button>
+    </div>
+
+    <div class="dashboard">
+        <div class="card bpm-card">
+            <div class="card-header">Batimentos Cardíacos</div>
+            <div class="card-value heartbeat" id="bpmValue">--</div>
+            <div class="card-unit">BPM</div>
+        </div>
+
+        <div class="card state-card">
+            <div class="card-header">Estado Clínico</div>
+            <div class="card-value state-normal" id="stateValue">Aguardando...</div>
+        </div>
+
+        <div class="card alert-card">
+            <div class="card-header">⚠️ Alertas</div>
+            <div class="card-value" id="alertValue">NORMAL</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">ADC Bruto</div>
+            <div class="card-value" id="adcValue" style="color: #3498db;">--</div>
+            <div class="card-unit">0-4095</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Status do Sistema</div>
+            <div class="card-value" id="statusValue" style="font-size: 1.5em; color: #9b59b6;">Aguardando</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Última Atualização</div>
+            <div class="card-value" id="lastUpdate" style="font-size: 1.2em; color: #34495e;">--:--:--</div>
+        </div>
+    </div>
+
+    <div class="statistics">
+        <h3 style="margin-bottom: 15px; color: #667eea;">📊 Estatísticas de Conexão</h3>
+        <div class="stat-row">
+            <span class="stat-label">Mensagens Recebidas:</span>
+            <span class="stat-value" id="msgCount">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Última Mensagem BPM:</span>
+            <span class="stat-value" id="lastBpm">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Tempo Conectado:</span>
+            <span class="stat-value" id="uptime">00:00:00</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Client ID:</span>
+            <span class="stat-value" id="clientId">--</span>
+        </div>
+    </div>
+
+    <div class="messages">
+        <h3 style="margin-bottom: 15px; color: #667eea;">📨 Log de Mensagens MQTT</h3>
+        <div id="messageLog"></div>
+    </div>
+
+    <div class="connection-info">
+        <p>🌐 Broker: broker.hivemq.com | 📡 Tópico: mackenzie/cardiac/#</p>
+        <p style="margin-top: 5px; font-size: 0.85em;">
+            WebSocket: Auto-detecta (HTTP: porta 8000 | HTTPS: porta 8884 com SSL)
+        </p>
+    </div>
+
+    <script>
+        let client = null;
+        let connected = false;
+        let messageCount = 0;
+        let connectionTime = null;
+        let uptimeInterval = null;
+        let currentClientId = null;
+
+        function toggleConnection() {
+            if (connected) {
+                disconnect();
+            } else {
+                connect();
+            }
+        }
+
+        function connect() {
+            currentClientId = "WebDashboard_" + Math.random().toString(16).substr(2, 8);
+            document.getElementById('clientId').textContent = currentClientId;
+            
+            // Detecta se está em HTTPS (GitHub Pages) ou HTTP (local)
+            const isSecure = window.location.protocol === 'https:';
+            const wsPort = isSecure ? 8884 : 8000;
+            
+            client = new Paho.MQTT.Client(
+                "broker.hivemq.com",
+                Number(wsPort),
+                "/mqtt",
+                currentClientId
+            );
+
+            client.onConnectionLost = onConnectionLost;
+            client.onMessageArrived = onMessageArrived;
+
+            const options = {
+                onSuccess: onConnect,
+                onFailure: onFailure,
+                useSSL: isSecure,  // Usa SSL se estiver em HTTPS
+                timeout: 30,
+                keepAliveInterval: 60,
+                cleanSession: true
+            };
+
+            try {
+                client.connect(options);
+                const protocol = options.useSSL ? 'wss://' : 'ws://';
+                const port = options.useSSL ? 8884 : 8000;
+                updateStatus(`Conectando via ${protocol}...`, false);
+                addMessage(`⏳ Conectando ao ${protocol}broker.hivemq.com:${port}...`, "info");
+            } catch (error) {
+                console.error("Erro ao conectar:", error);
+                addMessage("✗ Erro na conexão: " + error.message, "error");
+                updateStatus("Erro na conexão", false);
+            }
+        }
+
+        function disconnect() {
+            if (client && connected) {
+                client.disconnect();
+                connected = false;
+                connectionTime = null;
+                if (uptimeInterval) {
+                    clearInterval(uptimeInterval);
+                    uptimeInterval = null;
+                }
+                updateStatus("Desconectado", false);
+                document.getElementById('connectBtn').textContent = 'Conectar';
+                addMessage("👋 Desconectado do broker", "info");
+            }
+        }
+
+        function onConnect() {
+            console.log("✓ Conectado ao broker MQTT HiveMQ!");
+            connected = true;
+            connectionTime = new Date();
+            updateStatus("Conectado ao HiveMQ", true);
+            document.getElementById('connectBtn').textContent = 'Desconectar';
+
+            // Inscreve em todos os tópicos
+            try {
+                client.subscribe("mackenzie/cardiac/#", {
+                    onSuccess: function() {
+                        console.log("✓ Inscrito nos tópicos");
+                        addMessage("✅ Conectado ao broker HiveMQ com sucesso!", "success");
+                        addMessage("✅ Inscrito em: mackenzie/cardiac/#", "success");
+                    },
+                    onFailure: function(error) {
+                        console.error("Erro ao inscrever:", error);
+                        addMessage("⚠️ Erro ao inscrever nos tópicos", "error");
+                    }
+                });
+            } catch (error) {
+                console.error("Erro na inscrição:", error);
+                addMessage("✗ Erro ao inscrever: " + error.message, "error");
+            }
+
+            // Inicia contador de uptime
+            uptimeInterval = setInterval(updateUptime, 1000);
+        }
+
+        function onFailure(error) {
+            console.error("❌ Falha na conexão:", error);
+            updateStatus("Erro na conexão", false);
+            const errorMsg = error.errorMessage || "Timeout ou broker inacessível";
+            addMessage("✗ Falha: " + errorMsg, "error");
+            
+            // Sugestões de troubleshooting
+            if (errorMsg.includes("timeout") || errorMsg.includes("AMQJS")) {
+                addMessage("💡 Verifique: firewall, porta 8000 bloqueada, ou broker temporariamente offline", "info");
+            }
+        }
+
+        function onConnectionLost(responseObject) {
+            if (responseObject.errorCode !== 0) {
+                console.log("⚠️ Conexão perdida:", responseObject.errorMessage);
+                connected = false;
+                connectionTime = null;
+                if (uptimeInterval) {
+                    clearInterval(uptimeInterval);
+                    uptimeInterval = null;
+                }
+                updateStatus("Conexão perdida - Reconectando...", false);
+                document.getElementById('connectBtn').textContent = 'Conectar';
+                addMessage("✗ Conexão perdida: " + responseObject.errorMessage, "error");
+                
+                // Tenta reconectar após 5 segundos
+                addMessage("🔄 Tentando reconectar em 5 segundos...", "info");
+                setTimeout(() => {
+                    if (!connected) {
+                        addMessage("🔄 Tentando reconectar...", "info");
+                        connect();
+                    }
+                }, 5000);
+            }
+        }
+
+        function onMessageArrived(message) {
+            const topic = message.destinationName;
+            const payload = message.payloadString;
+
+            console.log("📨 Mensagem:", topic, "→", payload);
+            messageCount++;
+            document.getElementById('msgCount').textContent = messageCount;
+
+            // Log da mensagem
+            const topicShort = topic.replace("mackenzie/cardiac/", "");
+            addMessage(`📩 ${topicShort}: ${payload}`, "info");
+
+            // Atualiza o dashboard baseado no tópico
+            if (topic.includes("/bpm")) {
+                const bpm = parseInt(payload);
+                document.getElementById('bpmValue').textContent = bpm;
+                document.getElementById('lastBpm').textContent = bpm + " bpm";
+                updateHeartbeatSpeed(bpm);
+            } 
+            else if (topic.includes("/state")) {
+                const stateElement = document.getElementById('stateValue');
+                let stateText = payload;
+                
+                // Traduz estados se necessário
+                if (payload === "TACHYCARDIA") stateText = "TAQUICARDIA";
+                if (payload === "BRADYCARDIA") stateText = "BRADICARDIA";
+                if (payload === "TAQUICARDIA" || payload === "TACHYCARDIA") {
+                    stateElement.className = 'card-value state-tachy';
+                } else if (payload === "BRADICARDIA" || payload === "BRADYCARDIA") {
+                    stateElement.className = 'card-value state-brady';
+                } else {
+                    stateElement.className = 'card-value state-normal';
+                }
+                
+                stateElement.textContent = stateText;
+            } 
+            else if (topic.includes("/alert")) {
+                const alertElement = document.getElementById('alertValue');
+                alertElement.textContent = payload;
+                
+                // Alerta visual
+                if (payload.includes("HIGH") || payload.includes("LOW") || payload.includes("OFF")) {
+                    alertElement.style.animation = "pulse 0.5s ease-in-out 3";
+                }
+            } 
+            else if (topic.includes("/status")) {
+                document.getElementById('statusValue').textContent = payload.toUpperCase();
+            } 
+            else if (topic.includes("/raw_adc")) {
+                document.getElementById('adcValue').textContent = payload;
+            }
+
+            // Atualiza timestamp
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent = 
+                now.toLocaleTimeString('pt-BR');
+        }
+
+        function updateStatus(text, isConnected) {
+            document.getElementById('statusText').textContent = text;
+            const indicator = document.getElementById('statusIndicator');
+            if (isConnected) {
+                indicator.classList.add('connected');
+            } else {
+                indicator.classList.remove('connected');
+            }
+        }
+
+        function addMessage(text, type = "info") {
+            const messageLog = document.getElementById('messageLog');
+            const messageDiv = document.createElement('div');
+            
+            let className = 'message';
+            if (type === "error") className += ' error-message';
+            if (type === "success") className += ' success-message';
+            
+            messageDiv.className = className;
+            
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('pt-BR');
+            
+            messageDiv.innerHTML = `
+                <span class="message-time">[${timeStr}]</span> ${text}
+            `;
+            
+            messageLog.insertBefore(messageDiv, messageLog.firstChild);
+            
+            // Mantém apenas as últimas 100 mensagens
+            while (messageLog.children.length > 100) {
+                messageLog.removeChild(messageLog.lastChild);
+            }
+        }
+
+        function updateHeartbeatSpeed(bpm) {
+            const heartbeat = document.querySelector('.heartbeat');
+            if (heartbeat && bpm > 0 && bpm <= 220) {
+                const duration = 60 / bpm;
+                heartbeat.style.animation = `heartbeat ${duration}s infinite`;
+            }
+        }
+
+        function updateUptime() {
+            if (!connectionTime) return;
+            
+            const now = new Date();
+            const diff = Math.floor((now - connectionTime) / 1000);
+            
+            const hours = Math.floor(diff / 3600);
+            const minutes = Math.floor((diff % 3600) / 60);
+            const seconds = diff % 60;
+            
+            const uptimeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            document.getElementById('uptime').textContent = uptimeStr;
+        }
+
+        // Auto-conectar ao carregar a página
+        window.addEventListener('load', function() {
+            addMessage("🚀 Dashboard carregado. Clique em 'Conectar' para iniciar.", "info");
+            // Conecta automaticamente após 1 segundo
+            setTimeout(() => {
+                if (!connected) {
+                    connect();
+                }
+            }, 1000);
+        });
+
+        // Cleanup ao fechar
+        window.addEventListener('beforeunload', function() {
+            if (connected) {
+                disconnect();
+            }
+        });
+    </script>
+</body>
+</html>
