@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "author": "Filipe Pereira Silva",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "esp32", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "potentiometer", "id": "pot", "top": 100, "left": 200, "attrs": { "value": 0.5 } },
+    { "type": "pushbutton", "id": "btn_lo_plus", "top": 150, "left": 200, "attrs": {} },
+    { "type": "pushbutton", "id": "btn_lo_minus", "top": 200, "left": 200, "attrs": {} },
+    { "type": "led", "id": "led_green", "top": 250, "left": 200, "attrs": { "color": "green" } },
+    { "type": "led", "id": "led_yellow", "top": 300, "left": 200, "attrs": { "color": "yellow" } },
+    { "type": "led", "id": "led_red", "top": 350, "left": 200, "attrs": { "color": "red" } },
+    { "type": "buzzer", "id": "buzzer", "top": 400, "left": 200, "attrs": {} }
+  ],
+  "connections": [
+    ["esp:34", "pot:wiper", "black", ["v0"]],
+    ["esp:18", "btn_lo_plus:1.l", "black", ["v0"]],
+    ["esp:19", "btn_lo_minus:1.l", "black", ["v0"]],
+    ["esp:26", "led_green:a", "green", ["v0"]],
+    ["esp:27", "led_yellow:a", "yellow", ["v0"]],
+    ["esp:14", "led_red:a", "red", ["v0"]],
+    ["esp:25", "buzzer:1", "black", ["v0"]],
+    ["esp:GND", "pot:l", "black", ["v0"]],
+    ["esp:GND", "btn_lo_plus:1.r", "black", ["v0"]],
+    ["esp:GND", "btn_lo_minus:1.r", "black", ["v0"]],
+    ["esp:GND", "led_green:c", "black", ["v0"]],
+    ["esp:GND", "led_yellow:c", "black", ["v0"]],
+    ["esp:GND", "led_red:c", "black", ["v0"]],
+    ["esp:GND", "buzzer:2", "black", ["v0"]]
+  ]
+}
